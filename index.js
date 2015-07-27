@@ -15,14 +15,21 @@ var wss = new WebSocketServer({server: server})
 console.log("websocket server created")
 
 wss.on("connection", function(ws) {
-  var id = setInterval(function() {
-    ws.send(JSON.stringify(new Date()), function() {  })
-  }, 1000)
+  // var id = setInterval(function() {
+  //   ws.send(JSON.stringify(new Date()), function() {  })
+  // }, 1000)
 
   console.log("websocket connection open")
+  //ws.send('connected');
+
+  ws.on('message', function (data, flags) {
+    console.log('received message: ' + data);
+    ws.send(data);
+  });
 
   ws.on("close", function() {
-    console.log("websocket connection close")
-    clearInterval(id)
-  })
+    console.log("websocket connection close");
+    //clearInterval(id);
+  });
+
 })

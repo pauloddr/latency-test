@@ -1,5 +1,6 @@
 <html>
   <head>
+    <script src="//code.jquery.com/jquery-1.11.3.min.js"></script>
     <style>
       body {
         font-family: "Helvetica Neue", helvetica, arial;
@@ -15,20 +16,203 @@
       ul li {
         line-height: 1.4;
       }
+
+      .button {
+        width: 50px;
+        height: 50px;
+        border: 1px solid orange;
+        text-align: center;
+        line-height: 50px;
+        vertical-align: middle;
+        position: absolute;
+        border: 10px dashed #eeeeee;
+        font-weight: bold;
+      }
+
+      #container{ position: relative; }
+
+      .left{ left: 10px; top: 90px; }
+      .right{ left: 170px; top: 90px; }
+      .up{ left: 90px; top: 10px; }
+      .down{ left: 90px; top: 90px; }
+
+      .left_punch{ left: 300px; top: 10px; }
+      .right_punch{ left: 380px; top: 10px; }
+      .left_kick{ left: 300px; top: 90px; }
+      .right_kick{ left: 380px; top: 90px; }
+
+      .local-pressed { background-color: red; color: white; }
+      .remote-pressed { border: 10px dashed black; }
+
+      #results {
+        border: 1px solid black;
+        position: relative;
+        top: 200px;
+        width: 450px;
+        height: 400px;
+        overflow: auto;
+      }
+
+      #instructions {
+        position: absolute;
+        left: 490px;
+        right: 0px;
+        word-wrap: break-word;
+      }
+
     </style>
 
     <script>
-      var host = location.origin.replace(/^http/, 'ws')
-      var ws = new WebSocket(host);
-      ws.onmessage = function (event) {
-        var li = document.createElement('li');
-        li.innerHTML = JSON.parse(event.data);
-        document.querySelector('#pings').appendChild(li);
-      };
+
+      $(document).ready(function () {
+
+        'use strict';
+
+        /**
+        For keys pressed:
+
+        var keys_pressed = 0;
+        onKeyDown:
+          keys_pressed = keys_pressed | keyMultiplier; // will add bit: 1, 2, 4, 8...
+        onKeyUp:
+          keys_pressed = keys_pressed ^ keyMultiplier; // will remove bit
+
+        In both events, send keys_pressed to server, stores timestamp and a sequence ID.
+        Then server sends both numbers back, and client calculates travel time
+          (before applying server response to view.)
+
+        Suggested multipliers:
+        1   - left  - most used
+        2   - right - most used
+        4   - down  - most used
+        8   - LP
+        16  - LK
+        32  - RP
+        64  - RK
+        128 - up    - least used
+
+
+        How to decompose integer into powers of two?
+
+        http://stackoverflow.com/questions/6754108/get-the-sum-of-powers-of-2-for-a-given-number-c-sharp
+
+        */
+
+        var keys_pressed = 0, keys_down = {}, divs = {}, action_id = 0, actions = {}, hits = 0, total_ms = 0;
+        var modifiers = {
+          '65': 1,  // A
+          '68': 2,  // D
+          '83': 4,  // S
+          '89': 8,  // Y
+          '72': 16, // H
+          '85': 32, // U
+          '74': 64, // J
+          '87': 128 // W
+        };
+
+        // Cache DOM elements
+        $.each(modifiers, function (key, value) {
+          divs['m_' + value] = $('#m_' + value);
+        });
+
+        divs['buttons'] = $('.button'); // all buttons
+        divs['latency'] = document.getElementById('latency');
+
+        window.onkeydown = function (event) {
+          var index = '' + event.keyCode;
+          if (keys_down[index])
+            return;
+          var modifier = modifiers[index];
+          if (!modifier)
+            return;
+          keys_down[index] = true;
+          localKeyDown(modifiers[index]);
+        }
+
+        window.onkeyup = function (event) {
+          var index = '' + event.keyCode;
+          var modifier = modifiers[index];
+          if (!modifier)
+            return;
+          keys_down[index] = false;
+          localKeyUp(modifiers[index]);
+        }
+
+        function localKeyDown(modifier) {
+          keys_pressed = keys_pressed | modifier;
+          divs['m_' + modifier].addClass('local-pressed');
+          sendToServer();
+        }
+
+        function localKeyUp(modifier) {
+          keys_pressed = keys_pressed ^ modifier;
+          divs['m_' + modifier].removeClass('local-pressed');
+          sendToServer();
+        }
+
+        function updateRemoteKeys(total) {
+          total = +total;
+          divs['buttons'].removeClass('remote-pressed');
+          var currentPow, result = [];
+          for (currentPow = 1; currentPow != 0; currentPow <<= 1) {
+            if ((currentPow & total) != 0)
+              divs['m_' + currentPow].addClass('remote-pressed');
+          }
+        }
+
+        var host = location.origin.replace(/^http/, 'ws');
+        var ws = new WebSocket(host);
+        ws.onmessage = function (event) {
+          var parts = event.data.split(',');
+          var a_id = parts[0];
+          var action = actions[a_id];
+          action['end'] = Date.now();
+          var remote_keys = parts[1];
+          updateRemoteKeys(remote_keys);
+          calculateLatency(action);
+          // var li = document.createElement('li');
+          // li.innerHTML = event.data;
+          // document.querySelector('#results').appendChild(li);
+        };
+
+        function calculateLatency(action) {
+          hits++;
+          total_ms += action['end'] - action['start'];
+          console.log(total_ms);
+          divs['latency'].innerHTML = (total_ms / hits).toFixed(3);
+        }
+
+        function sendToServer() {
+          var a_id = '' + (++action_id);
+          actions[a_id] = { start: Date.now() };
+          ws.send(a_id + ',' + keys_pressed);
+        }
+
+      });
+
     </script>
   </head>
   <body>
-    <h1>Pings</h1>
-    <ul id='pings'></ul>
+    <h1>Websocket Latency Test</h1>
+    <div id="container">
+      <div id="m_1" class="button left">A</div>
+      <div id="m_2" class="button right">D</div>
+      <div id="m_128" class="button up">W</div>
+      <div id="m_4" class="button down">S</div>
+      <div id="m_8" class="button left_punch">Y</div>
+      <div id="m_32" class="button right_punch">U</div>
+      <div id="m_16" class="button left_kick">H</div>
+      <div id="m_64" class="button right_kick">J</div>
+      <div id="instructions">
+        <h2>How this works</h2>
+        <p>Press any of the keys shown to the left:</p>
+        <p>Once you press a key, the background color of the corresponding box will turn RED, and then that keystroke will be sent to the server. Once the server returns a response, the borders of the corresponding box will turn BLACK.</p>
+        <p>When you release a key, the background color of the corresponding box will turn back to WHITE, and that information will be sent to the server again. Once the server returns the response of that release, the borders of the corresponding box will turn back to SILVER.</p>
+        <p>You should be able to catch with your eye how fast the border changes color, compared to the background color. <u>That is the server latency</u>.</p>
+        <p><b>Average latency: <span id="latency">?</span>ms</b></p>
+
+      </div>
+    </div>
+    <ul id='results'></ul>
   </body>
 </html>
