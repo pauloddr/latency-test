@@ -1,18 +1,11 @@
-# Node.js Websocket Test
+# Latency Test
 
-A tiny demo using the [einaros/ws](http://einaros.github.io/ws/) WebSockets implementation.
+A simple page to test input latency and server travel time.
 
-# Running Locally
+## Demo
 
-``` bash
-npm install
-npm start
-```
+https://warm-bastion-4176.herokuapp.com/
 
-# Running on Heroku
+## Notes
 
-``` bash
-heroku create
-git push heroku master
-heroku open
-```
+Heroku will drop the websocket connection after 30 seconds of inactivity.
